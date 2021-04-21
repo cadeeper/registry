@@ -63,8 +63,8 @@ func (r *MockRegistry) IsAvailable() bool {
 }
 
 // GetUrl ...
-func (r *MockRegistry) GetUrl() common.URL {
-	return common.URL{}
+func (r *MockRegistry) GetURL() *common.URL {
+	return &common.URL{}
 }
 
 func (r *MockRegistry) subscribe(*common.URL) (Listener, error) {

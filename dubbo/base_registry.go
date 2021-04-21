@@ -18,7 +18,6 @@
 package dubbo
 
 import (
-	"context"
 	"errors"
 	"fmt"
 	"net/url"
@@ -91,13 +90,13 @@ type FacadeBasedRegistry interface {
 
 // BaseRegistry is a common logic abstract for registry. It implement Registry interface.
 type BaseRegistry struct {
-	context             context.Context
+	// context             context.Context
 	facadeBasedRegistry FacadeBasedRegistry
 	*common.URL
 	birth    int64          // time of file birth, seconds since Epoch; 0 if unknown
 	wg       sync.WaitGroup // wg+done for zk restart
 	done     chan struct{}
-	cltLock  sync.RWMutex           //ctl lock is a lock for services map
+	cltLock  sync.RWMutex           // ctl lock is a lock for services map
 	services map[string]*common.URL // service name + protocol -> service config, for store the service registered
 }
 
@@ -111,21 +110,21 @@ func (r *BaseRegistry) InitBaseRegistry(url *common.URL, facadeRegistry FacadeBa
 	return r
 }
 
-// GetUrl for get registry's url
-func (r *BaseRegistry) GetUrl() common.URL {
-	return *r.URL
+// GetURL for get registry's url
+func (r *BaseRegistry) GetURL() *common.URL {
+	return r.URL
 }
 
 // Destroy for graceful down
 func (r *BaseRegistry) Destroy() {
-	//first step close registry's all listeners
+	// first step close registry's all listeners
 	r.facadeBasedRegistry.CloseListener()
 	// then close r.done to notify other program who listen to it
 	close(r.done)
 	// wait waitgroup done (wait listeners outside close over)
 	r.wg.Wait()
 
-	//close registry client
+	// close registry client
 	r.closeRegisters()
 }
 
@@ -135,14 +134,20 @@ func (r *BaseRegistry) Register(conf *common.URL) error {
 		ok  bool
 		err error
 	)
+	// if developer define registry port and ip, use it first.
+	if ipToRegistry := os.Getenv("DUBBO_IP_TO_REGISTRY"); ipToRegistry != "" {
+		conf.Ip = ipToRegistry
+	}
+	if portToRegistry := os.Getenv("DUBBO_PORT_TO_REGISTRY"); portToRegistry != "" {
+		conf.Port = portToRegistry
+	}
 	role, _ := strconv.Atoi(r.URL.GetParam(constant.ROLE_KEY, ""))
 	// Check if the service has been registered
 	r.cltLock.Lock()
 	_, ok = r.services[conf.Key()]
 	r.cltLock.Unlock()
 	if ok {
-		logger.Errorf("Path{%s} has been registered", conf.Key())
-		return RegisteredError
+		return perrors.Errorf("Path{%s} has been registered", conf.Key())
 	}
 
 	err = r.register(conf)
@@ -202,7 +207,6 @@ func (r *BaseRegistry) service(c *common.URL) string {
 
 // RestartCallBack for reregister when reconnect
 func (r *BaseRegistry) RestartCallBack() bool {
-
 	// copy r.services
 	services := make([]*common.URL, 0, len(r.services))
 	for _, confIf := range r.services {
@@ -244,12 +248,12 @@ func (r *BaseRegistry) processURL(c *common.URL, f func(string, string) error, c
 	}
 	var (
 		err error
-		//revision   string
+		// revision   string
 		params     url.Values
 		rawURL     string
 		encodedURL string
 		dubboPath  string
-		//conf       config.URL
+		// conf       config.URL
 	)
 	params = url.Values{}
 
@@ -260,7 +264,7 @@ func (r *BaseRegistry) processURL(c *common.URL, f func(string, string) error, c
 
 	params.Add("pid", processID)
 	params.Add("ip", localIP)
-	//params.Add("timeout", fmt.Sprintf("%d", int64(r.Timeout)/1e6))
+	// params.Add("timeout", fmt.Sprintf("%d", int64(r.Timeout)/1e6))
 
 	role, _ := strconv.Atoi(r.URL.GetParam(constant.ROLE_KEY, ""))
 	switch role {
@@ -272,6 +276,10 @@ func (r *BaseRegistry) processURL(c *common.URL, f func(string, string) error, c
 	default:
 		return perrors.Errorf("@c{%v} type is not referencer or provider", c)
 	}
+	if err != nil {
+		return perrors.WithMessagef(err, "@c{%v} registry fail", c)
+	}
+
 	encodedURL = url.QueryEscape(rawURL)
 	dubboPath = strings.ReplaceAll(dubboPath, "$", "%24")
 	err = f(dubboPath, encodedURL)
@@ -324,7 +332,16 @@ func (r *BaseRegistry) providerRegistry(c *common.URL, params url.Values, f crea
 	}
 	host += ":" + c.Port
 
-	rawURL = fmt.Sprintf("%s://%s%s?%s", c.Protocol, host, c.Path, params.Encode())
+	// delete empty param key
+	for key, val := range params {
+		if len(val) > 0 && val[0] == "" {
+			params.Del(key)
+		}
+	}
+
+	s, _ := url.QueryUnescape(params.Encode())
+	rawURL = fmt.Sprintf("%s://%s%s?%s", c.Protocol, host, c.Path, s)
+
 	// Print your own registration service providers.
 	dubboPath = fmt.Sprintf("/dubbo/%s/%s", r.service(c), (common.RoleType(common.PROVIDER)).String())
 	logger.Debugf("provider path:%s, url:%s", dubboPath, rawURL)
@@ -359,7 +376,8 @@ func (r *BaseRegistry) consumerRegistry(c *common.URL, params url.Values, f crea
 	}
 
 	params.Add("protocol", c.Protocol)
-	rawURL = fmt.Sprintf("consumer://%s%s?%s", localIP, c.Path, params.Encode())
+	s, _ := url.QueryUnescape(params.Encode())
+	rawURL = fmt.Sprintf("consumer://%s%s?%s", localIP, c.Path, s)
 	dubboPath = fmt.Sprintf("/dubbo/%s/%s", r.service(c), (common.RoleType(common.CONSUMER)).String())
 
 	logger.Debugf("consumer path:%s, url:%s", dubboPath, rawURL)
@@ -405,7 +423,6 @@ func (r *BaseRegistry) Subscribe(url *common.URL, notifyListener NotifyListener)
 				logger.Infof("update begin, service event: %v", serviceEvent.String())
 				notifyListener.Notify(serviceEvent)
 			}
-
 		}
 		sleepWait(n)
 	}
@@ -437,7 +454,6 @@ func (r *BaseRegistry) UnSubscribe(url *common.URL, notifyListener NotifyListene
 			logger.Infof("update begin, service event: %v", serviceEvent.String())
 			notifyListener.Notify(serviceEvent)
 		}
-
 	}
 	return nil
 }

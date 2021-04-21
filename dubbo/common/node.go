@@ -19,7 +19,7 @@ package common
 
 // Node ...
 type Node interface {
-	GetUrl() URL
+	GetURL() *URL
 	IsAvailable() bool
 	Destroy()
 }

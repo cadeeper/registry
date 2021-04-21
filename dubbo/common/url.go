@@ -21,6 +21,7 @@ import (
 	"bytes"
 	"encoding/base64"
 	"fmt"
+	"github.com/prometheus/common/log"
 	"math"
 	"net"
 	"net/url"
@@ -170,7 +171,12 @@ func WithToken(token string) option {
 		if len(token) > 0 {
 			value := token
 			if strings.ToLower(token) == "true" || strings.ToLower(token) == "default" {
-				value = uuid.NewV4().String()
+				u, err := uuid.NewV4()
+				if err != nil {
+					log.Errorf("could not generator UUID: %v", err)
+					return
+				}
+				value = u.String()
 			}
 			url.SetParam(constant.TOKEN_KEY, value)
 		}
@@ -189,7 +195,7 @@ func NewURLWithOptions(opts ...option) *URL {
 
 // NewURL will create a new url
 // the urlString should not be empty
-func NewURL(urlString string, opts ...option) (URL, error) {
+func NewURL(urlString string, opts ...option) (*URL, error) {
 
 	var (
 		err          error
@@ -200,12 +206,12 @@ func NewURL(urlString string, opts ...option) (URL, error) {
 
 	// new a null instance
 	if urlString == "" {
-		return s, nil
+		return &s, nil
 	}
 
 	rawUrlString, err = url.QueryUnescape(urlString)
 	if err != nil {
-		return s, perrors.Errorf("url.QueryUnescape(%s),  error{%v}", urlString, err)
+		return &s, perrors.Errorf("url.QueryUnescape(%s),  error{%v}", urlString, err)
 	}
 
 	//rawUrlString = "//" + rawUrlString
@@ -218,12 +224,12 @@ func NewURL(urlString string, opts ...option) (URL, error) {
 	}
 	serviceUrl, err = url.Parse(rawUrlString)
 	if err != nil {
-		return s, perrors.Errorf("url.Parse(url string{%s}),  error{%v}", rawUrlString, err)
+		return &s, perrors.Errorf("url.Parse(url string{%s}),  error{%v}", rawUrlString, err)
 	}
 
 	s.params, err = url.ParseQuery(serviceUrl.RawQuery)
 	if err != nil {
-		return s, perrors.Errorf("url.ParseQuery(raw url string{%s}),  error{%v}", serviceUrl.RawQuery, err)
+		return &s, perrors.Errorf("url.ParseQuery(raw url string{%s}),  error{%v}", serviceUrl.RawQuery, err)
 	}
 
 	s.PrimitiveURL = urlString
@@ -235,17 +241,17 @@ func NewURL(urlString string, opts ...option) (URL, error) {
 	if strings.Contains(s.Location, ":") {
 		s.Ip, s.Port, err = net.SplitHostPort(s.Location)
 		if err != nil {
-			return s, perrors.Errorf("net.SplitHostPort(url.Host{%s}), error{%v}", s.Location, err)
+			return &s, perrors.Errorf("net.SplitHostPort(url.Host{%s}), error{%v}", s.Location, err)
 		}
 	}
 	for _, opt := range opts {
 		opt(&s)
 	}
-	return s, nil
+	return &s, nil
 }
 
 // URLEqual ...
-func (c URL) URLEqual(url URL) bool {
+func (c *URL) URLEqual(url *URL) bool {
 	c.Ip = ""
 	c.Port = ""
 	url.Ip = ""
@@ -303,7 +309,7 @@ func (c URL) String() string {
 }
 
 // Key ...
-func (c URL) Key() string {
+func (c *URL) Key() string {
 	buildString := fmt.Sprintf(
 		"%s://%s:%s@%s:%s/?interface=%s&group=%s&version=%s",
 		c.Protocol, c.Username, c.Password, c.Ip, c.Port, c.Service(), c.GetParam(constant.GROUP_KEY, ""), c.GetParam(constant.VERSION_KEY, ""))
@@ -312,7 +318,7 @@ func (c URL) Key() string {
 }
 
 // ServiceKey ...
-func (c URL) ServiceKey() string {
+func (c *URL) ServiceKey() string {
 	intf := c.GetParam(constant.INTERFACE_KEY, strings.TrimPrefix(c.Path, "/"))
 	if intf == "" {
 		return ""
@@ -364,7 +370,7 @@ func (c *URL) EncodedServiceKey() string {
 }
 
 // Service ...
-func (c URL) Service() string {
+func (c *URL) Service() string {
 	service := c.GetParam(constant.INTERFACE_KEY, strings.TrimPrefix(c.Path, "/"))
 	if service != "" {
 		return service
@@ -403,7 +409,7 @@ func (c *URL) RangeParams(f func(key, value string) bool) {
 }
 
 // GetParam ...
-func (c URL) GetParam(s string, d string) string {
+func (c *URL) GetParam(s string, d string) string {
 	var r string
 	c.paramsLock.RLock()
 	if r = c.params.Get(s); len(r) == 0 {
@@ -414,12 +420,12 @@ func (c URL) GetParam(s string, d string) string {
 }
 
 // GetParams ...
-func (c URL) GetParams() url.Values {
+func (c *URL) GetParams() url.Values {
 	return c.params
 }
 
 // GetParamAndDecoded ...
-func (c URL) GetParamAndDecoded(key string) (string, error) {
+func (c *URL) GetParamAndDecoded(key string) (string, error) {
 	c.paramsLock.RLock()
 	defer c.paramsLock.RUnlock()
 	ruleDec, err := base64.URLEncoding.DecodeString(c.GetParam(key, ""))
@@ -428,7 +434,7 @@ func (c URL) GetParamAndDecoded(key string) (string, error) {
 }
 
 // GetRawParam ...
-func (c URL) GetRawParam(key string) string {
+func (c *URL) GetRawParam(key string) string {
 	switch key {
 	case "protocol":
 		return c.Protocol
@@ -448,7 +454,7 @@ func (c URL) GetRawParam(key string) string {
 }
 
 // GetParamBool ...
-func (c URL) GetParamBool(s string, d bool) bool {
+func (c *URL) GetParamBool(s string, d bool) bool {
 
 	var r bool
 	var err error
@@ -459,7 +465,7 @@ func (c URL) GetParamBool(s string, d bool) bool {
 }
 
 // GetParamInt ...
-func (c URL) GetParamInt(s string, d int64) int64 {
+func (c *URL) GetParamInt(s string, d int64) int64 {
 	var r int
 	var err error
 
@@ -470,7 +476,7 @@ func (c URL) GetParamInt(s string, d int64) int64 {
 }
 
 // GetMethodParamInt ...
-func (c URL) GetMethodParamInt(method string, key string, d int64) int64 {
+func (c *URL) GetMethodParamInt(method string, key string, d int64) int64 {
 	var r int
 	var err error
 	c.paramsLock.RLock()
@@ -482,7 +488,7 @@ func (c URL) GetMethodParamInt(method string, key string, d int64) int64 {
 }
 
 // GetMethodParamInt64 ...
-func (c URL) GetMethodParamInt64(method string, key string, d int64) int64 {
+func (c *URL) GetMethodParamInt64(method string, key string, d int64) int64 {
 	r := c.GetMethodParamInt(method, key, math.MinInt64)
 	if r == math.MinInt64 {
 		return c.GetParamInt(key, d)
@@ -492,7 +498,7 @@ func (c URL) GetMethodParamInt64(method string, key string, d int64) int64 {
 }
 
 // GetMethodParam ...
-func (c URL) GetMethodParam(method string, key string, d string) string {
+func (c *URL) GetMethodParam(method string, key string, d string) string {
 	var r string
 	if r = c.GetParam("methods."+method+"."+key, ""); r == "" {
 		r = d
@@ -501,7 +507,7 @@ func (c URL) GetMethodParam(method string, key string, d string) string {
 }
 
 // GetMethodParamBool ...
-func (c URL) GetMethodParamBool(method string, key string, d bool) bool {
+func (c *URL) GetMethodParamBool(method string, key string, d bool) bool {
 	r := c.GetParamBool("methods."+method+"."+key, d)
 	return r
 }
@@ -524,7 +530,7 @@ func (c *URL) SetParams(m url.Values) {
 }
 
 // ToMap transfer URL to Map
-func (c URL) ToMap() map[string]string {
+func (c *URL) ToMap() map[string]string {
 
 	paramsMap := make(map[string]string)
 

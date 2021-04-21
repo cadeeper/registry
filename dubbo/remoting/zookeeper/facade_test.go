@@ -18,24 +18,43 @@
 package zookeeper
 
 import (
+	"github.com/dubbogo/go-zookeeper/zk"
+	gxzookeeper "github.com/dubbogo/gost/database/kv/zk"
+	"github.com/mosn/registry/dubbo/common"
+	"github.com/stretchr/testify/assert"
 	"sync"
 	"testing"
 	"time"
-
-	"github.com/dubbogo/go-zookeeper/zk"
-	"github.com/mosn/registry/dubbo/common"
-	"github.com/stretchr/testify/assert"
 )
 
 type mockFacade struct {
-	client  *ZookeeperClient
+	client  *gxzookeeper.ZookeeperClient
 	cltLock sync.Mutex
 	wg      sync.WaitGroup
 	URL     *common.URL
 	done    chan struct{}
 }
 
-func newMockFacade(client *ZookeeperClient, url *common.URL) ZkClientFacade {
+func verifyEventStateOrder(t *testing.T, c <-chan zk.Event, expectedStates []zk.State, source string) {
+	for _, state := range expectedStates {
+		for {
+			event, ok := <-c
+			if !ok {
+				t.Fatalf("unexpected channel close for %s", source)
+			}
+			if event.Type != zk.EventSession {
+				continue
+			}
+
+			if event.State != state {
+				t.Fatalf("mismatched state order from %s, expected %v, received %v", source, state, event.State)
+			}
+			break
+		}
+	}
+}
+
+func newMockFacade(client *gxzookeeper.ZookeeperClient, url *common.URL) ZkClientFacade {
 	mock := &mockFacade{
 		client: client,
 		URL:    url,
@@ -45,11 +64,11 @@ func newMockFacade(client *ZookeeperClient, url *common.URL) ZkClientFacade {
 	return mock
 }
 
-func (r *mockFacade) ZkClient() *ZookeeperClient {
+func (r *mockFacade) ZkClient() *gxzookeeper.ZookeeperClient {
 	return r.client
 }
 
-func (r *mockFacade) SetZkClient(client *ZookeeperClient) {
+func (r *mockFacade) SetZkClient(client *gxzookeeper.ZookeeperClient) {
 	r.client = client
 }
 
@@ -65,8 +84,8 @@ func (r *mockFacade) Done() chan struct{} {
 	return r.done
 }
 
-func (r *mockFacade) GetUrl() common.URL {
-	return *r.URL
+func (r *mockFacade) GetUrl() *common.URL {
+	return r.URL
 }
 
 func (r *mockFacade) Destroy() {
@@ -83,15 +102,18 @@ func (r *mockFacade) IsAvailable() bool {
 }
 
 func Test_Facade(t *testing.T) {
-	ts, z, event, err := NewMockZookeeperClient("test", 15*time.Second)
+	ts, z, event, err := gxzookeeper.NewMockZookeeperClient("test", 15*time.Second)
 	assert.NoError(t, err)
-	defer ts.Stop()
+	defer func() {
+		if err := ts.Stop(); err != nil {
+			t.Errorf("tc.Stop() = error: %v", err)
+		}
+	}()
 	url, _ := common.NewURL("mock://127.0.0.1")
-	mock := newMockFacade(z, &url)
+	mock := newMockFacade(z, url)
 	go HandleClientRestart(mock)
 	states := []zk.State{zk.StateConnecting, zk.StateConnected, zk.StateHasSession}
 	verifyEventStateOrder(t, event, states, "event channel")
 	z.Close()
 	verifyEventStateOrder(t, event, []zk.State{zk.StateDisconnected}, "event channel")
-	//time.Sleep(2e9)
 }
