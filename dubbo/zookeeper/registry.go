@@ -54,7 +54,7 @@ type zkRegistry struct {
 	zkPath map[string]int // key = protocol://ip:port/interface
 }
 
-func newZkRegistry(url *common.URL) (registry.Registry, error) {
+func NewZkRegistry(url *common.URL) (registry.Registry, error) {
 	var (
 		err error
 		r   *zkRegistry
