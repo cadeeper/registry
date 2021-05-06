@@ -121,9 +121,10 @@ func (r *BaseRegistry) Destroy() {
 	r.facadeBasedRegistry.CloseListener()
 	// then close r.done to notify other program who listen to it
 	close(r.done)
+	r.WaitGroup().Done()
 	// wait waitgroup done (wait listeners outside close over)
 	r.wg.Wait()
-
+	logger.Infof("Destroy Registry wait finish...............")
 	// close registry client
 	r.closeRegisters()
 }

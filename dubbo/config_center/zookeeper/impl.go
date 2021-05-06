@@ -18,6 +18,7 @@
 package zookeeper
 
 import (
+	gxzookeeper "github.com/dubbogo/gost/database/kv/zk"
 	"strings"
 	"sync"
 	"time"
@@ -46,7 +47,7 @@ type zookeeperDynamicConfiguration struct {
 	wg       sync.WaitGroup
 	cltLock  sync.Mutex
 	done     chan struct{}
-	client   *zookeeper.ZookeeperClient
+	client   *gxzookeeper.ZookeeperClient
 
 	listenerLock  sync.Mutex
 	listener      *zookeeper.ZkEventListener
@@ -59,7 +60,7 @@ func newZookeeperDynamicConfiguration(url *common.URL) (*zookeeperDynamicConfigu
 		url:      url,
 		rootPath: "/" + url.GetParam(constant.CONFIG_NAMESPACE_KEY, config_center.DEFAULT_GROUP) + "/config",
 	}
-	err := zookeeper.ValidateZookeeperClient(c, zookeeper.WithZkName(ZkClient))
+	err := zookeeper.ValidateZookeeperClient(c, ZkClient)
 	if err != nil {
 		logger.Errorf("zookeeper client start error ,error message is %v", err)
 		return nil, err
@@ -76,7 +77,7 @@ func newZookeeperDynamicConfiguration(url *common.URL) (*zookeeperDynamicConfigu
 
 }
 
-func newMockZookeeperDynamicConfiguration(url *common.URL, opts ...zookeeper.Option) (*zk.TestCluster, *zookeeperDynamicConfiguration, error) {
+func newMockZookeeperDynamicConfiguration(url *common.URL, opts ...gxzookeeper.Option) (*zk.TestCluster, *zookeeperDynamicConfiguration, error) {
 	c := &zookeeperDynamicConfiguration{
 		url:      url,
 		rootPath: "/" + url.GetParam(constant.CONFIG_NAMESPACE_KEY, config_center.DEFAULT_GROUP) + "/config",
@@ -85,7 +86,7 @@ func newMockZookeeperDynamicConfiguration(url *common.URL, opts ...zookeeper.Opt
 		tc  *zk.TestCluster
 		err error
 	)
-	tc, c.client, _, err = zookeeper.NewMockZookeeperClient("test", 15*time.Second, opts...)
+	tc, c.client, _, err = gxzookeeper.NewMockZookeeperClient("test", 15*time.Second, opts...)
 	if err != nil {
 		logger.Errorf("mock zookeeper client start error ,error message is %v", err)
 		return tc, c, err
@@ -185,11 +186,11 @@ func (c *zookeeperDynamicConfiguration) SetParser(p parser.ConfigurationParser) 
 	c.parser = p
 }
 
-func (c *zookeeperDynamicConfiguration) ZkClient() *zookeeper.ZookeeperClient {
+func (c *zookeeperDynamicConfiguration) ZkClient() *gxzookeeper.ZookeeperClient {
 	return c.client
 }
 
-func (c *zookeeperDynamicConfiguration) SetZkClient(client *zookeeper.ZookeeperClient) {
+func (c *zookeeperDynamicConfiguration) SetZkClient(client *gxzookeeper.ZookeeperClient) {
 	c.client = client
 }
 
@@ -205,8 +206,8 @@ func (c *zookeeperDynamicConfiguration) Done() chan struct{} {
 	return c.done
 }
 
-func (c *zookeeperDynamicConfiguration) GetUrl() common.URL {
-	return *c.url
+func (c *zookeeperDynamicConfiguration) GetURL() *common.URL {
+	return c.url
 }
 
 func (c *zookeeperDynamicConfiguration) Destroy() {

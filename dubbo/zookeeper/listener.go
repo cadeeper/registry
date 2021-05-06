@@ -117,6 +117,7 @@ type RegistryConfigurationListener struct {
 // NewRegistryConfigurationListener for listening the event of zk.
 func NewRegistryConfigurationListener(client *gxzookeeper.ZookeeperClient, reg *zkRegistry, conf *common.URL) *RegistryConfigurationListener {
 	reg.WaitGroup().Add(1)
+	logger.Infof("NewRegistryConfigurationListener add wg: %v", *reg.WaitGroup())
 	return &RegistryConfigurationListener{
 		client:       client,
 		registry:     reg,
@@ -161,6 +162,7 @@ func (l *RegistryConfigurationListener) Close() {
 		l.isClosed = true
 		l.close <- struct{}{}
 		l.registry.WaitGroup().Done()
+		logger.Infof("RegistryConfigurationListener sub wg: %v", *l.registry.WaitGroup())
 	})
 }
 
