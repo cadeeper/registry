@@ -42,7 +42,7 @@ type ServiceEvent struct {
 
 // String return the description of event
 func (e ServiceEvent) String() string {
-	return fmt.Sprintf("ServiceEvent{Action{%s}, Path{%s}}", e.Action, e.Service)
+	return fmt.Sprintf("ServiceEvent{Action{%s}, Path{%v}}", e.Action, e.Service)
 }
 
 // Event is align with Event interface in Java.
